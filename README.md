@@ -38,6 +38,7 @@ optional arguments:
 
 # examples
 
+## Generic
 ```
 novomail -a account1:~/.mutt/account1/ -a account2:~/.mutt/account2/ \
    -t '{% if total_new > 0 %}New mails: {{ total_new }}{% else %}No new mail{% endif %}' \
@@ -47,3 +48,37 @@ novomail -a account1:~/.mutt/account1/ -a account2:~/.mutt/account2/ \
    -f 30
 ```
 
+## Xfce4 GenMon Script
+
+```sh
+#!/bin/bash
+# vim: set ts=2 sw=2 sts=2 et:
+
+# accounts
+OPTS="-a account1:~/.mutt/account1 -a account2:~/.mutt/account2 -a account3:~/.mutt/account3"
+
+
+#    <txt>Text to display</txt>
+#    <img>Path to the image to display</img>
+#    <tool>Tooltip text</tool>
+#    <bar>Pourcentage to display in the bar</bar>
+#    <click>The command to be executed when clicking on the image</click>
+#    <txtclick>The command to be executed when clicking on the text</txtclick>
+
+# templates
+$HOME/.scripts/novomail $OPTS -t "{% if total_new > 0 %}
+<img>$HOME/.mutt/helpers/novomail_xfcegenmon_newmail.png</img>
+<tool>
+{% for a in accounts %}{% if a.new_count > 0 %} {{ a.name }}: {{ a.new_count }} 
+{% endif %}{% endfor %}</tool>
+{% else %}
+<img>$HOME/.mutt/helpers/novomail_xfcegenmon_nomail.png</img>
+{% endif %}" \
+-x 'paplay  /usr/share/sounds/freedesktop/stereo/message-new-instant.oga & notify-send "Novo correo" -t 10000 -i /usr/share/icons/ePapirus/24x24/panel/xfce-newmail.svg "@T@"' \
+-X '{% for a in accounts %}{% if a.new_count > 0 %}{% if total_new < 3 %}{% for f in a.new %}{% for m in a.new[f] %}{{ a.name }} ({{f}})
+{{ m.from }}
+{{ m.subject }}
+{% endfor %}{% endfor %}{% else %}{{ a.name }}: {{ a.new_count }}
+{% endif %}{% endif %}{% endfor %}' \
+-f 10
+```
