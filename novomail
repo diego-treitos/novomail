@@ -16,7 +16,7 @@ from jinja2 import Template
 
 
 NAME='novomail'
-VERSION='0.1'
+VERSION='0.2'
 
 NOW=time.time()
 DEFAULT_FORGET=300
@@ -99,7 +99,7 @@ def main():
   else:
     print( Template( DEFAULT_TEMPLATE ).render( context ) )
 
-  if args.command:
+  if total_new > 0 and args.command:
     if args.exec_template:
       args.command = args.command.replace(
         '@T@',
