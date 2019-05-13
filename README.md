@@ -65,20 +65,23 @@ OPTS="-a account1:~/.mutt/account1 -a account2:~/.mutt/account2 -a account3:~/.m
 #    <click>The command to be executed when clicking on the image</click>
 #    <txtclick>The command to be executed when clicking on the text</txtclick>
 
-# templates
+# template
 $HOME/.scripts/novomail $OPTS -t "{% if total_new > 0 %}
 <img>$HOME/.mutt/helpers/novomail_xfcegenmon_newmail.png</img>
+<txt>{{ total_new }}</txt>
 <tool>
-{% for a in accounts %}{% if a.new_count > 0 %} {{ a.name }}: {{ a.new_count }} 
-{% endif %}{% endfor %}</tool>
+{% for a in accounts %}{% for f in a.new %} {{ a.name }} ({{ f }}): {{ a.new[f]|length }} 
+{% endfor %}{% endfor %}</tool>
 {% else %}
 <img>$HOME/.mutt/helpers/novomail_xfcegenmon_nomail.png</img>
-{% endif %}" \
--x 'paplay  /usr/share/sounds/freedesktop/stereo/message-new-instant.oga & notify-send "Novo correo" -t 10000 -i /usr/share/icons/ePapirus/24x24/panel/xfce-newmail.svg "@T@"' \
+{% endif %}
+<click>$HOME/.mutt/helpers/check_via_offlineimap</click>" \
+-x "paplay  /usr/share/sounds/freedesktop/stereo/message-new-instant.oga & notify-send 'Novo correo' -t 10000 -i /usr/share/icons/ePapirus/24x24/panel/xfce-newmail.svg '@T@'" \
 -X '{% for a in accounts %}{% if a.new_count > 0 %}{% if total_new < 3 %}{% for f in a.new %}{% for m in a.new[f] %}{{ a.name }} ({{f}})
 {{ m.from }}
 {{ m.subject }}
+
 {% endfor %}{% endfor %}{% else %}{{ a.name }}: {{ a.new_count }}
 {% endif %}{% endif %}{% endfor %}' \
--f 10
+-f 30
 ```
