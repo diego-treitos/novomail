@@ -16,7 +16,7 @@ from jinja2 import Template
 
 
 NAME='novomail'
-VERSION='0.2'
+VERSION='0.3'
 
 NOW=time.time()
 DEFAULT_FORGET=300
@@ -58,6 +58,9 @@ def check_account( acc_path ):
   new_mails = {}
   apath = os.path.expanduser( acc_path )
   for fol in os.listdir( apath ):
+    # skip trash folders
+    if 'trash' in fol.lower():
+      continue
     fol_new = os.path.join( apath, fol, 'new' )
     if os.path.isdir( fol_new ):
       new_mails[ fol ] = []
