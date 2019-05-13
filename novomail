@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+# vim: set ts=2 sw=2 sts=2 et:
+
+# Author: Diego Blanco <diego.blanco@treitos.com>
+# GitHub: https://github.com/diego-treitos/novomail
+
+import argparse
+import os
+import sys
+import subprocess
+import time
+import traceback
+from email.header import decode_header
+from jinja2 import Template
+
+
+NAME='novomail'
+VERSION='0.1'
+
+NOW=time.time()
+DEFAULT_FORGET=300
+DEFAULT_TEMPLATE='{% for a in accounts %}{% if a.new_count > 0 %}{{ a.name }}: {{ a.new_count }} {% endif %}{% endfor %}'
+
+
+def my_header_decode( field ):
+  header = ''
+  for text in decode_header( field ):
+    if type( text[0] ) == str:
+      header += text[0] + ' '
+    elif text[1]:
+      header += text[0].decode(text[1]) + ' '
+    else:
+      header += text[0].decode('unicode_escape') + ' '
+  return header.strip()
+
+
+def parse_mail( mail_path ):
+  meta = {}
+  with open( mail_path, 'rb' ) as msg:
+    while True:
+      line = msg.readline().decode('unicode_escape')
+      if line.startswith('From:'):
+        meta['from'] = my_header_decode( line.lstrip('From:').strip() )
+      if line.startswith('Subject:'):
+        meta['subject'] = my_header_decode( line.lstrip('Subject:').strip() )
+      if 'subject' in meta and 'from' in meta:
+        break
+
+  meta['timestamp'] = os.stat( mail_path ).st_mtime
+  return meta
+
+
+def check_account( acc_path ):
+  global DEFAULT_FORGET
+  global NOW
+
+  new_mails = {}
+  apath = os.path.expanduser( acc_path )
+  for fol in os.listdir( apath ):
+    fol_new = os.path.join( apath, fol, 'new' )
+    if os.path.isdir( fol_new ):
+      new_mails[ fol ] = []
+      for m in os.listdir( fol_new ):
+        meta = parse_mail( os.path.join( fol_new, m ) )
+        if NOW - meta['timestamp'] < DEFAULT_FORGET:
+          new_mails[ fol ].append( meta )
+      if not new_mails[ fol ]:
+        new_mails.pop( fol )
+  return new_mails
+
+
+def main():
+  global args
+
+  accounts=[]
+  for acc in args.account:
+    acc_parts = acc.split(':')
+    accounts.append({
+      'name': acc_parts[0],
+      'path': ':'.join(acc_parts[1:])
+    })
+
+  total_new = 0
+  for account in accounts:
+    account['new'] = check_account( account['path'] )
+    account['new_count'] = 0
+    for fol in account['new']:
+      account['new_count'] += account['new'][fol].__len__()
+    total_new+= account['new_count']
+
+  context = {
+    'accounts': accounts,
+    'total_new': total_new
+  }
+  if args.verbose:
+    import json
+    print( json.dumps( context, indent=4, sort_keys=True ) )
+  else:
+    print( Template( DEFAULT_TEMPLATE ).render( context ) )
+
+  if args.command:
+    if args.exec_template:
+      args.command = args.command.replace(
+        '@T@',
+        Template( args.exec_template ).render( context )
+      )
+    subprocess.run(args.command, shell=True, check=True)
+
+
+if __name__ == '__main__':
+  try:
+    parser = argparse.ArgumentParser( prog=sys.argv[0] )
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        default=False,
+                        help='Show the structure of the dict to be used in the Jinja2 template and some other debug information. Supress other output')
+    parser.add_argument('-V', '--version', action='store_true',
+                        default=False,
+                        help='print version and exit')
+    parser.add_argument('-a', '--account', action='append',
+                        required=True,
+                        help='Id and path to a directory containing the maildirs of one account. (i.e. account1:~/.mutt/account1/) It can be used several times for multiple accounts.')
+    parser.add_argument('-t', '--template', action='store',
+                        help='Jinja2 template receiving the results dict as render context. (default: %s)' % DEFAULT_TEMPLATE.replace('%', '%%'))
+    parser.add_argument('-f', '--forget', dest='minutes', action='store',
+                        help='Number of minutes after which the new mails are not anymore counted as new. (default: %d)' % DEFAULT_FORGET)
+    parser.add_argument('-x', '--exec', dest='command', action='store',
+                        help='Execute command when new mails are detected in any of the accounts. Before executing the command and its arguments, the @T@ sequence will be replaced with the result of the -X parameter.')
+    parser.add_argument('-X', '--exec-template', action='store',
+                        help='Jinja2 template receiving the results dict as render context that will be used in the -x command, replacing the @T@ string.')
+    args = parser.parse_args()
+
+    if args.version:
+      print( '%s %s' % (NAME, VERSION) )
+      sys.exit( 0 )
+    if args.verbose:
+      start_time = time.time()
+      print( time.strftime( '%b %d %H:%M:%S\n---------------' ) )
+    if args.minutes:
+      DEFAULT_FORGET = int( args.minutes ) * 60
+    if args.template:
+      DEFAULT_TEMPLATE = args.template
+    main()
+    if args.verbose:
+      stop_time = time.time()
+      print( time.strftime( '---------------\n%b %d %H:%M:%S' ) )
+      print( '---------------\nTOTAL TIME: %.3fs' %(stop_time - start_time), end='' )
+    sys.exit( 0 )
+  except KeyboardInterrupt as e:  # Ctrl-C
+    sys.exit( 130 )
+  except SystemExit as e:  # sys.exit()
+    raise e
+  except Exception as e:
+    print( str(e) )
+    traceback.print_exc()
+    os._exit(1)
