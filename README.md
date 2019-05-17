@@ -78,8 +78,8 @@ $HOME/.scripts/novomail $OPTS -t "{% if total_new > 0 %}
 <click>$HOME/.mutt/helpers/check_via_offlineimap</click>" \
 -x "paplay  /usr/share/sounds/freedesktop/stereo/message-new-instant.oga & notify-send 'Novo correo' -t 10000 -i /usr/share/icons/ePapirus/24x24/panel/xfce-newmail.svg '@T@'" \
 -X '{% for a in accounts %}{% if a.new_count > 0 %}{% if total_new < 3 %}{% for f in a.new %}{% for m in a.new[f] %}{{ a.name }} ({{f}})
-{{ m.from }}
-{{ m.subject }}
+{{ m.from | replace('\'', '´') }}
+{{ m.subject | replace('\'', '´') }}
 
 {% endfor %}{% endfor %}{% else %}{{ a.name }}: {{ a.new_count }}
 {% endif %}{% endif %}{% endfor %}' \
