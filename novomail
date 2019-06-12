@@ -16,7 +16,7 @@ from jinja2 import Template
 
 
 NAME='novomail'
-VERSION='0.5'
+VERSION='0.6'
 
 NOW=time.time()
 DEFAULT_FORGET=300
@@ -46,6 +46,11 @@ def parse_mail( mail_path ):
         meta['subject'] = my_header_decode( line.lstrip('Subject:').strip() )
       if 'subject' in meta and 'from' in meta:
         break
+      if not line:
+        if 'subject' not in meta:
+          meta['subject'] = ''
+        if 'from' not in meta:
+          meta['from'] = ''
 
   meta['timestamp'] = os.stat( mail_path ).st_mtime
   return meta
