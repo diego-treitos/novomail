@@ -16,7 +16,7 @@ from jinja2 import Template
 
 
 NAME='novomail'
-VERSION='0.6'
+VERSION='0.7'
 
 NOW=time.time()
 DEFAULT_FORGET=300
@@ -61,6 +61,7 @@ def check_account( acc_path ):
   global NOW
 
   new_mails = {}
+  unread_mails = 0
   apath = os.path.expanduser( acc_path )
   for fol in os.listdir( apath ):
     # skip trash folders
@@ -70,12 +71,13 @@ def check_account( acc_path ):
     if os.path.isdir( fol_new ):
       new_mails[ fol ] = []
       for m in os.listdir( fol_new ):
+        unread_mails += 1
         meta = parse_mail( os.path.join( fol_new, m ) )
         if NOW - meta['timestamp'] < DEFAULT_FORGET:
           new_mails[ fol ].append( meta )
       if not new_mails[ fol ]:
         new_mails.pop( fol )
-  return new_mails
+  return unread_mails,new_mails
 
 
 def main():
@@ -90,16 +92,19 @@ def main():
     })
 
   total_new = 0
+  total_unread = 0
   for account in accounts:
-    account['new'] = check_account( account['path'] )
+    account['unread_count'], account['new'] = check_account( account['path'] )
     account['new_count'] = 0
     for fol in account['new']:
       account['new_count'] += account['new'][fol].__len__()
-    total_new+= account['new_count']
+    total_new += account['new_count']
+    total_unread += account['unread_count']
 
   context = {
     'accounts': accounts,
-    'total_new': total_new
+    'total_new': total_new,
+    'total_unread': total_unread
   }
   if args.verbose:
     import json
