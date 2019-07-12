@@ -40,7 +40,7 @@ def parse_mail( mail_path ):
   meta = {}
   with open( mail_path, 'rb' ) as msg:
     while True:
-      line = msg.readline().decode('unicode_escape')
+      line = msg.readline().decode('utf8')
       if line.startswith('From:'):
         meta['from'] = my_header_decode( line.lstrip('From:').strip() )
       if line.startswith('Subject:'):
