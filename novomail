@@ -7,8 +7,9 @@
 
 import argparse
 import os
-import sys
+import shlex
 import subprocess
+import sys
 import time
 import traceback
 from email.header import decode_header
@@ -16,11 +17,11 @@ from jinja2 import Template
 
 
 NAME='novomail'
-VERSION='0.7'
+VERSION='1.0'
 
 NOW=time.time()
 DEFAULT_FORGET=300
-DEFAULT_TEMPLATE='{% for a in accounts %}{% if a.new_count > 0 %}{{ a.name }}: {{ a.new_count }} {% endif %}{% endfor %}'
+DEFAULT_TEMPLATE='{% for a in accounts %}{% if a.unread_count > 0 %}{{ a.name }}: {% if a.unread_count > 0 %}{{ a.unread_count }}{% endif %} {% if a.important_count > 0 %}({{ a.important_count }} important){% endif %}{% endif %}{% endfor %}'
 
 
 def my_header_decode( field ):
@@ -56,28 +57,48 @@ def parse_mail( mail_path ):
   return meta
 
 
-def check_account( acc_path ):
+def check_account( acc ):
   global DEFAULT_FORGET
   global NOW
 
-  new_mails = {}
-  unread_mails = 0
-  apath = os.path.expanduser( acc_path )
+  acc['new'] = {}
+  acc['important_new'] = {}
+  acc['important_count'] = 0
+  acc['unread_count'] = 0
+  apath = os.path.expanduser( acc['path'] )
   for fol in os.listdir( apath ):
     # skip trash folders
     if any( s in fol.lower() for s in ('trash', 'spam', 'sent') ):
       continue
+
+    important = False
+    if fol in acc['important_folders']:
+      important = True
+
     fol_new = os.path.join( apath, fol, 'new' )
     if os.path.isdir( fol_new ):
-      new_mails[ fol ] = []
+      acc['new'][ fol ] = []
+      acc['important_new'][ fol ] = []
+
       for m in os.listdir( fol_new ):
-        unread_mails += 1
+        acc['unread_count'] += 1
+        if important:
+          acc['important_count'] += 1
+
         meta = parse_mail( os.path.join( fol_new, m ) )
         if NOW - meta['timestamp'] < DEFAULT_FORGET:
-          new_mails[ fol ].append( meta )
-      if not new_mails[ fol ]:
-        new_mails.pop( fol )
-  return unread_mails,new_mails
+          if important:
+           acc['important_new'][ fol ].append( meta )
+          else:
+            acc['new'][ fol ].append( meta )
+
+      # Clean empty lists
+      if not acc['new'][ fol ]:
+        acc['new'].pop( fol )
+      if not acc['important_new'][ fol ]:
+        acc['important_new'].pop( fol )
+
+  return acc
 
 
 def main():
@@ -93,18 +114,39 @@ def main():
 
   total_new = 0
   total_unread = 0
+  total_important = 0
+  total_important_new = 0
   for account in accounts:
-    account['unread_count'], account['new'] = check_account( account['path'] )
+    # Handle important folders
+    account['important_folders'] = []
+    if args.important:
+      for important in args.important:
+        acid = important.split(':')[0]
+        acim = important.split(':')[1].split(',')
+        if acid == account['name']:
+          account['important_folders'] = acim
+
+    check_account( account )
+
     account['new_count'] = 0
     for fol in account['new']:
       account['new_count'] += account['new'][fol].__len__()
+
+    account['important_new_count'] = 0
+    for fol in account['important_new']:
+      account['important_new_count'] += account['important_new'][fol].__len__()
+
     total_new += account['new_count']
     total_unread += account['unread_count']
+    total_important += account['important_count']
+    total_important_new += account['important_new_count']
 
   context = {
     'accounts': accounts,
     'total_new': total_new,
-    'total_unread': total_unread
+    'total_unread': total_unread,
+    'total_important': total_important,
+    'total_important_new': total_important_new
   }
   if args.verbose:
     import json
@@ -112,13 +154,10 @@ def main():
   else:
     print( Template( DEFAULT_TEMPLATE ).render( context ) )
 
-  if total_new > 0 and args.command:
-    if args.exec_template:
-      args.command = args.command.replace(
-        '@T@',
-        Template( args.exec_template ).render( context )
-      )
-    subprocess.run(args.command, shell=True, check=True)
+  if total_new+total_important > 0 and args.hooks:
+    for ct in args.hooks:
+      cmd = Template( ct ).render( context )
+      subprocess.run( shlex.split( cmd ), shell=False, check=True)
 
 
 if __name__ == '__main__':
@@ -132,15 +171,16 @@ if __name__ == '__main__':
                         help='print version and exit')
     parser.add_argument('-a', '--account', action='append',
                         required=True,
-                        help='Id and path to a directory containing the maildirs of one account. (i.e. account1:~/.mutt/account1/) It can be used several times for multiple accounts.')
+                        help='Account Id and path to a directory containing the maildirs of one account. (i.e. account1:~/.mutt/account1/) It can be used several times for multiple accounts.')
+    parser.add_argument('-i', '--important', action='append',
+                        required=False,
+                        help='Account Id and comman separated list of important folders for the account. (i.e. account1:Security,URGENT,Alerts) It can be used several times for multiple accounts.')
     parser.add_argument('-t', '--template', action='store',
                         help='Jinja2 template receiving the results dict as render context. (default: %s)' % DEFAULT_TEMPLATE.replace('%', '%%'))
+    parser.add_argument('-x', '--exec', dest='hooks', action='append',
+                        help='Jinja2 template that will use the novomail generated JSON (viewable via -v) to generate a command to be executed (no "shellisms" allowed). It can be specified several times and commands will be executed in that order.')
     parser.add_argument('-f', '--forget', dest='minutes', action='store',
                         help='Number of minutes after which the new mails are not anymore counted as new. (default: %d)' % DEFAULT_FORGET)
-    parser.add_argument('-x', '--exec', dest='command', action='store',
-                        help='Execute command when new mails are detected in any of the accounts. Before executing the command and its arguments, the @T@ sequence will be replaced with the result of the -X parameter.')
-    parser.add_argument('-X', '--exec-template', action='store',
-                        help='Jinja2 template receiving the results dict as render context that will be used in the -x command, replacing the @T@ string.')
     args = parser.parse_args()
 
     if args.version:
@@ -159,7 +199,7 @@ if __name__ == '__main__':
       print( time.strftime( '---------------\n%b %d %H:%M:%S' ) )
       print( '---------------\nTOTAL TIME: %.3fs' %(stop_time - start_time), end='' )
     sys.exit( 0 )
-  except KeyboardInterrupt as e:  # Ctrl-C
+  except KeyboardInterrupt:  # Ctrl-C
     sys.exit( 130 )
   except SystemExit as e:  # sys.exit()
     raise e
