@@ -154,7 +154,7 @@ def main():
   else:
     print( Template( DEFAULT_TEMPLATE ).render( context ) )
 
-  if total_new+total_important > 0 and args.hooks:
+  if total_new+total_important_new > 0 and args.hooks:
     for ct in args.hooks:
       cmd = Template( ct ).render( context )
       subprocess.run( shlex.split( cmd ), shell=False, check=True)
