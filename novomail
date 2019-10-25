@@ -17,7 +17,7 @@ from jinja2 import Template
 
 
 NAME='novomail'
-VERSION='1.0'
+VERSION='1.1'
 
 NOW=time.time()
 DEFAULT_FORGET=300
@@ -40,7 +40,17 @@ def parse_mail( mail_path ):
   meta = {}
   with open( mail_path, 'rb' ) as msg:
     while True:
-      line = msg.readline().decode('utf8')
+      encs=['utf8', 'latin1']
+      line_bytes = msg.readline()
+      line = None
+      for enc in encs:
+        try:
+          line = line_bytes.decode( enc )
+          break
+        except:
+          pass
+      if not line:
+        line = msg.readline().decode('utf8', 'backslashreplace')
       if line.startswith('From:'):
         meta['from'] = my_header_decode( line.lstrip('From:').strip() )
       if line.startswith('Subject:'):
